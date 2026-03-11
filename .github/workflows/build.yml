@@ -39,7 +39,12 @@ jobs:
           rm -f .gitmodules
           rm -rf test/3rd-party
           rm -rf .git
-          git init && git add -A && git commit -m "patched build at $SHA"
+          find . -name ".gitattributes" -delete
+          git init
+          git config user.email "ci@github-actions"
+          git config user.name "GitHub Actions"
+          git add -A
+          git commit -m "patched build at $SHA"
 
       - name: Build wheel
         run: |
