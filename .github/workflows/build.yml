@@ -1,0 +1,78 @@
+name: Build Wheels
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      git_sha:
+        description: 'Upstream commit SHA to build from'
+        required: true
+        default: ''
+      version_label:
+        description: 'Version label for the release (e.g. v0.3.0)'
+        required: true
+        default: 'v0.3.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Clone upstream at pinned SHA
+        run: |
+          SHA="${{ github.event.inputs.git_sha }}"
+          git clone https://github.com/kcleal/superintervals.git upstream
+          cd upstream
+          git checkout $SHA
+          # Patch: remove broken submodule
+          rm -f .gitmodules
+          rm -rf test/3rd-party
+          rm -rf .git
+          git init && git add -A && git commit -m "patched build at $SHA"
+
+      - name: Build wheel
+        run: |
+          pip install build
+          cd upstream
+          python -m build --wheel --outdir ../dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-py${{ matrix.python-version }}
+          path: dist/*.whl
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version_label }}
+          name: "superintervals ${{ github.event.inputs.version_label }}"
+          body: |
+            Pre-built patched wheels from upstream superintervals.
+            Pinned SHA: `${{ github.event.inputs.git_sha }}`
+            Submodule build issue removed.
+          files: dist/**/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
