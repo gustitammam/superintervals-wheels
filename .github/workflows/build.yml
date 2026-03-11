@@ -15,17 +15,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
 
       - name: Clone upstream at pinned SHA
         run: |
@@ -36,24 +27,27 @@ jobs:
           # Patch: remove broken submodule
           rm -f .gitmodules
           rm -rf test/3rd-party
-          rm -rf .git
           find . -name ".gitattributes" -delete
+          rm -rf .git
           git init
           git config user.email "ci@github-actions"
           git config user.name "GitHub Actions"
           git add -A
           git commit -m "patched build at $SHA"
 
-      - name: Build wheel
-        run: |
-          pip install build
-          cd upstream
-          python -m build --wheel --outdir ../dist/
+      - name: Build manylinux wheel
+        uses: pypa/cibuildwheel@v2.22.0
+        with:
+          package-dir: upstream
+          output-dir: dist
+        env:
+          CIBW_BUILD: "cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014  # glibc 2.17, very compatible
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-py${{ matrix.python-version }}
+          name: wheels
           path: dist/*.whl
 
   release:
